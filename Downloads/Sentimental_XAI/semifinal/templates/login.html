@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="width:420px;margin:auto">
+  <h2>Login</h2>
+  <form method="POST">
+    <div style="margin:10px 0">
+      <label class="small">Username</label><br>
+      <input name="username" required style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#111;color:#fff">
+    </div>
+    <div style="margin:10px 0">
+      <label class="small">Password</label><br>
+      <input name="password" type="password" required style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#111;color:#fff">
+    </div>
+    <div style="margin-top:10px">
+      <button class="btn" type="submit">Login</button>
+      <a href="{{ url_for('register') }}" style="margin-left:8px;color:var(--muted)">Register</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

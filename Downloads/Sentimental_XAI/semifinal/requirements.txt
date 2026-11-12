@@ -1,0 +1,12 @@
+Flask==2.3.3
+Flask-Cors==3.0.10
+pydub
+SpeechRecognition
+vaderSentiment
+librosa
+numpy
+matplotlib
+scikit-learn
+lime
+shap
+soundfile

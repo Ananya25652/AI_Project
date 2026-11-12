@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="width:700px;margin:auto">
+  <h2>🎙 Voice Analysis</h2>
+  <p class="muted">Record audio and get sentiment, LIME (on transcript) and SHAP (on audio features).</p>
+
+  <div style="margin-top:12px">
+    <button id="startBtn" class="btn">▶ Start</button>
+    <button id="stopBtn" class="btn secondary" disabled>■ Stop</button>
+    <span id="status" class="muted" style="margin-left:12px">Idle</span>
+  </div>
+
+  <div style="margin-top:12px">
+    <div><strong>Transcript</strong></div>
+    <div id="transcript" style="padding:8px;background:#0b1220;border-radius:8px;margin-top:6px;min-height:40px">—</div>
+
+    <div style="margin-top:8px"><strong>Sentiment</strong></div>
+    <div id="sentiment" style="padding:8px;background:#0b1220;border-radius:8px;margin-top:6px">—</div>
+
+    <div style="margin-top:8px"><strong>LIME (transcript)</strong></div>
+    <div id="lime" style="padding:8px;background:#0b1220;border-radius:8px;margin-top:6px">—</div>
+
+    <div style="margin-top:8px"><strong>SHAP (audio)</strong></div>
+    <div id="shap" style="padding:8px;background:#0b1220;border-radius:8px;margin-top:6px">—</div>
+
+    <div style="margin-top:8px"><strong>Preview</strong></div>
+    <div id="preview" style="padding:8px;background:#0b1220;border-radius:8px;margin-top:6px">No recording yet</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API = "/api";
+let mediaRecorder, audioChunks = [];
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusEl = document.getElementById("status");
+const preview = document.getElementById("preview");
+
+async function initRecorder() {
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstart = () => {
+      audioChunks = [];
+      statusEl.textContent = "Recording…";
+      startBtn.disabled = true; stopBtn.disabled = false;
+    };
+    mediaRecorder.onstop = async () => {
+      statusEl.textContent = "Processing…";
+      startBtn.disabled = false; stopBtn.disabled = true;
+      const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || "audio/webm" });
+      // preview
+      preview.innerHTML = "";
+      const a = document.createElement("audio"); a.controls = true;
+      a.src = URL.createObjectURL(blob);
+      preview.appendChild(a);
+
+      // send to API
+      const fd = new FormData();
+      fd.append("audio", blob, "recording.webm");
+      const resp = await fetch(API + "/analyze_audio", { method: "POST", body: fd });
+      const data = await resp.json();
+      document.getElementById("transcript").textContent = data.transcript || "—";
+      document.getElementById("sentiment").textContent = data.sentiment || "—";
+      document.getElementById("lime").innerHTML = data.lime_html || "—";
+      if(data.shap_image){
+        document.getElementById("shap").innerHTML = `<img src="${data.shap_image}" style="max-width:100%">`;
+      } else {
+        document.getElementById("shap").textContent = data.shap_error || "No SHAP available";
+      }
+      statusEl.textContent = "Done";
+    };
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = "Microphone not allowed";
+    startBtn.disabled = true; stopBtn.disabled = true;
+  }
+}
+
+startBtn.addEventListener("click", async ()=>{
+  if(!mediaRecorder) await initRecorder();
+  audioChunks = [];
+  mediaRecorder.start();
+});
+
+stopBtn.addEventListener("click", ()=>{
+  if(mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+});
+</script>
+{% endblock %}

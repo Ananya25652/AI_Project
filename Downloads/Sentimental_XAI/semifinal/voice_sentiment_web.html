@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Voice Sentiment & Emotion — Web UI</title>
+  <style>
+    :root {
+      --card: #0b1220;
+      --accent: #06b6d4;
+      --text: #e6eef6;
+    }
+    body {
+      font-family: Inter,Segoe UI,Roboto,Arial,sans-serif;
+      background: linear-gradient(180deg,#081226 0%, #071022 100%);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 20px;
+      padding: 20px;
+    }
+    .card {
+      width: 720px;
+      max-width: 700px;
+      background: radial-gradient(ellipse at top left, rgba(255,255,255,0.02), transparent), var(--card);
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+      margin-bottom: 20px;
+    }
+    h1,h2 { margin: 0 0 12px 0; font-size: 20px; }
+    p.lead { margin: 0 0 18px 0; color: #9fb3c6; }
+    .controls { display: flex; gap: 12px; align-items: center; }
+    button { background: var(--accent); border: none; color: #022; padding: 10px 14px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    button.secondary { background: transparent; border: 1px solid rgba(255,255,255,0.05); color: var(--text); }
+    .status { margin-left: 8px; color: #9fb3c6; font-size: 14px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+    .panel { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.03); }
+    .label { font-size: 12px; color: #9fb3c6; margin-bottom: 6px; }
+    .result { font-size: 15px; color: var(--text); min-height: 40px; }
+    .big { font-size: 18px; font-weight: 700; }
+    .big-emoji { font-size: 32px; font-weight: 700; color: #06b6d4; }
+    .small-muted { font-size: 12px; color: #8fa6b8; }
+    .wave { height: 48px; background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius: 6px; display:flex; align-items:center; justify-content:center; color:#738da0; }
+    .legend { font-size: 12px; margin-top: 8px; color: #9fb3c6; }
+    input[type=text] { width: 100%; padding: 8px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #444; background: #111; color: #eee; }
+    #shapExplanation img { max-width:100%; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.4); }
+  </style>
+</head>
+<body>
+
+  <!-- LIME explanation box for text -->
+  <div id="limeExplanation" style="width:300px;margin-right:10px;padding:8px;background:#111;border-radius:6px;max-height:350px;overflow:auto"></div>
+
+  <!-- Voice UI -->
+  <div class="card">
+    <h1>🎙 Voice Sentiment & Emotion (Web)</h1>
+    <p class="lead">Click <strong>Start</strong>, speak, and stop. The recording is sent for analysis.</p>
+
+    <div class="controls">
+      <button id="startBtn">▶ Start Recording</button>
+      <button id="stopBtn" class="secondary" disabled>■ Stop</button>
+      <div class="status" id="status">Idle</div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <div class="label">Transcribed Text</div>
+        <div id="transcript" class="result">—</div>
+        <div class="legend">🟩 Positive, 🟥 Negative, ◻ Neutral</div>
+      </div>
+
+      <div class="panel">
+        <div class="label">Sentiment (Text)</div>
+        <div id="sentiment" class="result big">—</div>
+      </div>
+
+      <div class="panel">
+        <div class="label">Emotion (Voice)</div>
+        <div id="emotion" class="result big-emoji">—</div>
+      </div>
+
+      <div class="panel">
+        <div class="label">Raw Scores / Info</div>
+        <div id="info" class="result small-muted">—</div>
+      </div>
+
+      <div class="panel" style="grid-column:1/3">
+        <div class="label">SHAP Explanation (Audio)</div>
+        <div id="shapExplanation" class="result" style="min-height:120px">—</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <div class="label">Preview</div>
+      <div class="wave" id="audioPreview">No recording yet</div>
+    </div>
+  </div>
+
+  <!-- Text UI -->
+  <div class="card">
+    <h2>📝 Text Sentiment Analysis</h2>
+    <input type="text" id="textInput" placeholder="Enter text here...">
+    <button id="analyzeTextBtn">Analyze Text</button>
+    <p style="margin-top:10px"><strong>Sentiment:</strong> <span id="textSentimentResult">—</span></p>
+    <div class="legend">🟩 Positive, 🟥 Negative, ◻ Neutral</div>
+  </div>
+
+  <script>
+    const BACKEND = "http://127.0.0.1:5000";
+    let mediaRecorder, audioChunks = [];
+    const status = document.getElementById("status");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const audioPreview = document.getElementById("audioPreview");
+
+    function highlightWords(container, explanations) {
+      if (!explanations || explanations.length === 0) {
+        container.textContent = "—";
+        return;
+      }
+      container.innerHTML = explanations.map(ex => {
+        let color = "";
+        if(ex.score >= 0.05) color = "rgba(0,255,0,0.3)";
+        else if(ex.score <= -0.05) color = "rgba(255,0,0,0.3)";
+        return `<span style="background:${color};padding:2px 4px;border-radius:4px;margin:1px">${ex.word}</span>`;
+      }).join(" ");
+    }
+
+    async function initRecorder() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstart = () => {
+          audioChunks = [];
+          status.textContent = "Recording…";
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+        };
+        mediaRecorder.onstop = async () => {
+          status.textContent = "Processing…";
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+
+          const blob = new Blob(audioChunks,{type: audioChunks[0]?.type || 'audio/webm'});
+          audioPreview.innerHTML = "";
+          const audioURL = URL.createObjectURL(blob);
+          const audioEl = document.createElement('audio');
+          audioEl.controls = true;
+          audioEl.src = audioURL;
+          audioPreview.appendChild(audioEl);
+
+          // send to /analyze
+          const fd = new FormData();
+          fd.append('audio', blob, 'recording.webm');
+          const resp = await fetch(`${BACKEND}/analyze`, {method:'POST', body: fd});
+          const data = await resp.json();
+
+          document.getElementById("transcript").textContent = data.transcript || "—";
+          highlightWords(document.getElementById("transcript"), data.explanations);
+          document.getElementById("sentiment").textContent = data.sentiment || "—";
+          document.getElementById("emotion").textContent = data.emotion || "—";
+          document.getElementById("info").textContent = data.info || "—";
+          status.textContent = "Done";
+
+          // SHAP explanation
+          const fd2 = new FormData();
+          fd2.append('audio', blob, 'recording.webm');
+          document.getElementById("shapExplanation").innerHTML = `<p style="color:#aaa">Generating SHAP explanation...</p>`;
+          try {
+            const resp2 = await fetch(`${BACKEND}/explain_shap`, {method:'POST', body: fd2});
+            const sdata = await resp2.json();
+            if(sdata.shap_image){
+              document.getElementById("shapExplanation").innerHTML = `<img src="${sdata.shap_image}" alt="SHAP"/>`;
+            } else if (sdata.error){
+              document.getElementById("shapExplanation").textContent = sdata.error + (sdata.detail ? (': '+sdata.detail) : '');
+            } else {
+              document.getElementById("shapExplanation").textContent = JSON.stringify(sdata);
+            }
+          } catch(err){
+            document.getElementById("shapExplanation").textContent = "SHAP request failed.";
+            console.error(err);
+          }
+        };
+      } catch(e){
+        console.error(e); 
+        status.textContent = "Microphone not allowed"; 
+        startBtn.disabled = true; 
+        stopBtn.disabled = true;
+      }
+    }
+
+    startBtn.addEventListener('click', async ()=>{
+      if(!mediaRecorder) await initRecorder();
+      audioChunks = [];
+      mediaRecorder.start();
+    });
+
+    stopBtn.addEventListener('click', ()=>{
+      if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    });
+
+    document.getElementById("analyzeTextBtn").addEventListener("click", async ()=>{
+      const text = document.getElementById("textInput").value.trim();
+      if(!text) return alert("Enter text.");
+      const resp = await fetch(`${BACKEND}/analyze_text`, {
+        method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({text})
+      });
+      const result = await resp.json();
+      document.getElementById("textSentimentResult").textContent = result.sentiment || "—";
+      highlightWords(document.getElementById("textSentimentResult"), result.explanations);
+
+      // LIME
+      const limeResp = await fetch(`${BACKEND}/explain_lime`, {
+        method:"POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({text})
+      });
+      const limeData = await limeResp.json();
+      if(limeData.html) document.getElementById("limeExplanation").innerHTML = limeData.html;
+    });
+
+    (async ()=>{
+      try{
+        await navigator.mediaDevices.getUserMedia({audio:true});
+        status.textContent = "Ready";
+      } catch(e){
+        status.textContent = "Microphone not allowed"; 
+        startBtn.disabled = true;
+      }
+    })();
+  </script>
+
+</body>
+</html>

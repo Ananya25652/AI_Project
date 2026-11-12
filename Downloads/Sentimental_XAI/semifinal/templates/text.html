@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="width:700px;margin:auto">
+  <h2>📝 Text Analysis</h2>
+  <p class="muted">Enter text and get sentiment, LIME & SHAP explanations.</p>
+
+  <div style="margin-top:12px">
+    <textarea id="textInput" rows="4" style="width:100%;padding:8px;border-radius:8px;background:#0b1220;color:var(--text);border:1px solid rgba(255,255,255,0.03)"></textarea>
+    <div style="margin-top:8px">
+      <button id="analyzeBtn" class="btn">Analyze</button>
+    </div>
+
+    <div style="margin-top:8px"><strong>Sentiment</strong></div>
+    <div id="sentResult" style="padding:8px;background:#0b1220;border-radius:8px;margin-top:6px">—</div>
+
+    <div style="margin-top:8px"><strong>LIME (text)</strong></div>
+    <div id="limeOut" style="padding:8px;background:#0b1220;border-radius:8px;margin-top:6px">—</div>
+
+    <div style="margin-top:8px"><strong>SHAP (text-features)</strong></div>
+    <div id="shapOut" style="padding:8px;background:#0b1220;border-radius:8px;margin-top:6px">—</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API = "/api";
+document.getElementById("analyzeBtn").addEventListener("click", async ()=>{
+  const text = document.getElementById("textInput").value.trim();
+  if(!text) return alert("Enter text");
+  const resp = await fetch(API + "/analyze_text", {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ text })
+  });
+  const data = await resp.json();
+  document.getElementById("sentResult").textContent = data.sentiment || "—";
+  document.getElementById("limeOut").innerHTML = data.lime_html || "—";
+  if(data.shap_image){
+    document.getElementById("shapOut").innerHTML = `<img src="${data.shap_image}" style="max-width:100%">`;
+  } else {
+    document.getElementById("shapOut").textContent = data.shap_error || "No SHAP available";
+  }
+});
+</script>
+{% endblock %}
+{% autoescape true %}
+        blockofcode
+{% endautoescape %}
